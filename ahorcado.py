@@ -14,7 +14,7 @@ import shelve
 MYSQL_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'root',
+    'password':'root',
     'database': 'ahorcado'
 }
 
@@ -47,11 +47,18 @@ def guardar_puntuacion(jugador, palabra, exito, idioma):
             conn.close()
 
 def generar_sonido(frecuencia, duracion=0.2, volumen=0.05, sample_rate=44100):
-    t = np.linspace(0, duracion, int(sample_rate * duracion), False)
-    onda = volumen * np.sin(2 * np.pi * frecuencia * t)
-    sonido_array = (onda * 32767).astype(np.int16)
-    sonido_array = np.column_stack((sonido_array, sonido_array))
-    return pygame.sndarray.make_sound(sonido_array)
+    try:
+        t = np.linspace(0, duracion, int(sample_rate * duracion), False)
+        onda = volumen * np.sin(2 * np.pi * frecuencia * t)
+        sonido_array = (onda * 32767).astype(np.int16)
+        # Crear array estéreo (2 canales)
+        sonido_array = np.column_stack((sonido_array, sonido_array))
+        print(f"Shape del sonido_array: {sonido_array.shape}")  # Depuración
+        return pygame.mixer.Sound(sonido_array)
+    except Exception as e:
+        print(f"Error al generar sonido: {e}")
+        messagebox.showwarning("Advertencia", f"No se pudo generar el sonido: {e}")
+        return None
 
 def obtener_palabra_aleatoria(idioma):
     print(f"Intentando obtener palabra para idioma: {idioma}")
@@ -122,11 +129,24 @@ class JuegoAhorcado:
             color = interpolate_color("#bbdefb", "#90caf9", factor)
             self.canvas_fondo.create_line(0, y, 800, y, fill=color)
 
-        pygame.mixer.init()
+        # Inicializar mixer con parámetros explícitos
+        try:
+            pygame.mixer.quit()  # Cerrar cualquier inicialización previa
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            print(f"Configuración del mixer: {pygame.mixer.get_init()}")  # Depuración
+        except Exception as e:
+            print(f"Error al inicializar el mixer: {e}")
+            messagebox.showwarning("Advertencia", f"No se pudo inicializar el mixer de Pygame: {e}")
+
+        # Generar sonidos
         self.sonido_acierto = generar_sonido(440)
         self.sonido_error = generar_sonido(220)
         self.sonido_victoria = generar_sonido(880, duracion=0.5)
         self.sonido_derrota = generar_sonido(110, duracion=0.5)
+
+        # Verificar si los sonidos se crearon correctamente
+        if not all([self.sonido_acierto, self.sonido_error, self.sonido_victoria, self.sonido_derrota]):
+            messagebox.showwarning("Advertencia", "Uno o más sonidos no se pudieron generar. El juego continuará sin sonidos.")
 
         # Frames
         self.frame_bienvenida = tk.Frame(self.canvas_fondo, bg="#a8d4fa")
@@ -220,34 +240,40 @@ class JuegoAhorcado:
         letra = self.entry_letra.get().lower()
         self.entry_letra.delete(0, tk.END)
         if not letra.isalpha() or len(letra) != 1:
-            self.sonido_error.play()
+            if self.sonido_error:
+                self.sonido_error.play()
             messagebox.showwarning("Entrada inválida", "Por favor, ingresa una sola letra válida.")
             return
         self.intentos_por_letra[letra] += 1
         if letra in self.letras_adivinadas:
-            self.sonido_error.play()
+            if self.sonido_error:
+                self.sonido_error.play()
             messagebox.showinfo("Repetida", "Ya intentaste esa letra. Prueba otra.")
             return
         self.letras_adivinadas.add(letra)
         if letra in self.palabra:
-            self.sonido_acierto.play()
+            if self.sonido_acierto:
+                self.sonido_acierto.play()
             messagebox.showinfo("¡Acierto!", "La letra está en la palabra.")
             self.label_palabra.configure(fg="green")
             self.root.after(200, lambda: self.label_palabra.configure(fg="#0d47a1"))
         else:
             self.intentos_restantes -= 1
-            self.sonido_error.play()
+            if self.sonido_error:
+                self.sonido_error.play()
             messagebox.showerror("Error", "La letra no está en la palabra.")
             self.dibujar_ahorcado()
         self.actualizar_interfaz()
         if all(letra in self.letras_adivinadas for letra in self.palabra):
-            self.sonido_victoria.play()
+            if self.sonido_victoria:
+                self.sonido_victoria.play()
             guardar_puntuacion(self.jugador, self.palabra, True, self.idioma_juego)
             messagebox.showinfo("¡Victoria!", f"¡Felicidades! Adivinaste la palabra: {self.palabra}\nEstadísticas: {dict(self.intentos_por_letra)}")
             self.boton_adivinar.config(state="disabled")
             self.entry_letra.config(state="disabled")
         elif self.intentos_restantes == 0:
-            self.sonido_derrota.play()
+            if self.sonido_derrota:
+                self.sonido_derrota.play()
             guardar_puntuacion(self.jugador, self.palabra, False, self.idioma_juego)
             messagebox.showerror("Derrota", f"¡Perdiste! La palabra era: {self.palabra}\nEstadísticas: {dict(self.intentos_por_letra)}")
             self.boton_adivinar.config(state="disabled")
